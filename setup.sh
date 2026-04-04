@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup.sh — Claude Code 节点化编排平台安装脚本
+# setup.sh — Kimi Code 节点化编排平台安装脚本
 #
 # 用法:
 #   bash setup.sh [--ssh-target <user@host>] [--work-dir <path>]
@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-echo "=== Claude Code 节点化编排平台安装 ==="
+echo "=== Kimi Code 节点化编排平台安装 ==="
 echo
 
 # 1. 检查并安装必要依赖
@@ -83,16 +83,19 @@ fi
 
 echo
 
-# 2. 检查 Claude Code CLI
-log_info "检查 Claude Code CLI..."
-if command -v claude >/dev/null 2>&1; then
-  CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
-  log_info "Claude Code 已安装: $CLAUDE_VERSION"
+# 2. 检查 Kimi Code CLI
+log_info "检查 Kimi Code CLI..."
+KIMI_BIN=""
+if command -v kimi >/dev/null 2>&1; then
+  KIMI_BIN=$(which kimi)
+  log_info "kimi CLI 已在 PATH 中: $KIMI_BIN ($($KIMI_BIN --version 2>/dev/null || echo unknown))"
+elif [ -f "/root/.local/share/uv/tools/kimi-cli/bin/kimi" ]; then
+  KIMI_BIN="/root/.local/share/uv/tools/kimi-cli/bin/kimi"
+  log_info "kimi CLI 已安装（非 PATH）: $KIMI_BIN"
 else
-  log_warn "Claude Code CLI 未安装"
-  log_info "安装方法: https://docs.anthropic.com/en/docs/claude-code/setup"
-  echo "  macOS: brew install anthropic/formulas/claude"
-  echo "  Linux: curl -sL https://claude.ai/dl/linux | bash"
+  log_warn "Kimi Code CLI 未安装"
+  log_info "安装方法: https://www.kimi.com/code/docs/"
+  echo "  pip install kimi-cli  或  uv tool install kimi-cli"
 fi
 
 echo
@@ -180,23 +183,8 @@ echo "  1. 配置 SSH 免密登录到远程服务器"
 echo "  2. 运行测试验证: bash test/state_manager.test.sh"
 echo "  3. 开始使用: 参考 README.md"
 
-# === 优化一：版本检查与 Schema 校验 ===
-echo
-echo '=== 版本兼容性检查 ==='
-CLAUDE_INSTALLED_VERSION=$(claude --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'unknown')
-REQUIRED_MAJOR=2; REQUIRED_MINOR=1; REQUIRED_PATCH=71
-if [ "$CLAUDE_INSTALLED_VERSION" != 'unknown' ]; then
-  IFS='.' read -r V_MAJ V_MIN V_PAT <<< "$CLAUDE_INSTALLED_VERSION"
-  if [ "$V_MAJ" -lt "$REQUIRED_MAJOR" ] ||      ([ "$V_MAJ" -eq "$REQUIRED_MAJOR" ] && [ "$V_MIN" -lt "$REQUIRED_MINOR" ]) ||      ([ "$V_MAJ" -eq "$REQUIRED_MAJOR" ] && [ "$V_MIN" -eq "$REQUIRED_MINOR" ] && [ "$V_PAT" -lt "$REQUIRED_PATCH" ]); then
-    log_warn "Claude Code $CLAUDE_INSTALLED_VERSION may be incompatible. Recommended: >= 2.1.71"
-  else
-    log_info "Claude Code $CLAUDE_INSTALLED_VERSION >= 2.1.71 ✅"
-  fi
-fi
-
-echo '=== settings.json Schema 校验 ==='
-if [ -f '.claude/settings.json' ]; then
-  bash scripts/validate_settings.sh .claude/settings.json || log_warn 'settings.json schema check failed — please fix before running agents'
-else
-  log_warn '.claude/settings.json not found, skipping schema check'
+# 检查 Kimi CLI 版本
+if [ -n "$KIMI_BIN" ]; then
+  KIMI_VERSION=$($KIMI_BIN --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'unknown')
+  log_info "Kimi Code CLI 版本: $KIMI_VERSION"
 fi

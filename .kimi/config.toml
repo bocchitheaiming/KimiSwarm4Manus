@@ -1,0 +1,15 @@
+# Kimi Code CLI Hooks 配置文件
+# 用于 KimiSwarm4Manus 节点化编排平台
+#
+# 注意：此文件为项目级配置，部署时需将内容合并到远程服务器的 ~/.kimi/config.toml
+
+# 代码修改后标记脏位（PostToolUse Hook）
+[[hooks]]
+event = "PostToolUse"
+matcher = "WriteFile|StrReplaceFile"
+command = "bash scripts/set_dirty_bit.sh"
+
+# 退出前强制运行测试（Stop Hook）
+[[hooks]]
+event = "Stop"
+command = "bash scripts/verify_before_exit.sh"

@@ -1,9 +1,9 @@
 #!/bin/bash
-# cc_interrupt.sh: 优雅中断远程 Claude Code 任务，释放锁，保留日志
-# 使用 SIGINT 而非 SIGKILL，确保 Claude Code 有机会保存 checkpoint
+# kc_interrupt.sh: 优雅中断远程 Kimi Code 任务，释放锁，保留日志
+# 使用 SIGINT 而非 SIGKILL，确保 Kimi Code 有机会保存 checkpoint
 #
 # 用法:
-#   bash cc_interrupt.sh <ssh_target> <task_id> [work_dir] [reason]
+#   bash kc_interrupt.sh <ssh_target> <task_id> [work_dir] [reason]
 #
 # 参数:
 #   ssh_target - SSH 连接目标
@@ -45,7 +45,7 @@ if [ "$TASK_ID" = "current" ]; then
   TASK_ID=$(jq -r '.task_id' "$LOCK_FILE" 2>/dev/null || echo "")
 fi
 
-SESSION_NAME="cc_${TASK_ID}"
+SESSION_NAME="kc_${TASK_ID}"
 EXIT_FILE="${MANUS_DIR}/logs/${TASK_ID}.exit"
 
 # 检查 tmux 会话是否存在
@@ -57,7 +57,7 @@ fi
 # 从锁文件获取 PID
 LOCKED_PID=$(jq -r '.pid // empty' "$LOCK_FILE" 2>/dev/null || echo "")
 
-# 发送 SIGINT（优雅中断，允许 Claude Code 保存 checkpoint）
+# 发送 SIGINT（优雅中断，允许 Kimi Code 保存 checkpoint）
 if [ -n "$LOCKED_PID" ] && kill -0 "$LOCKED_PID" 2>/dev/null; then
   kill -SIGINT "$LOCKED_PID" 2>/dev/null || true
 fi

@@ -1,9 +1,9 @@
 #!/bin/bash
-# cc_probe.sh: 轻量探针，查询远程 Claude Code 任务状态，返回极简 JSON
+# kc_probe.sh: 轻量探针，查询远程 Kimi Code 任务状态，返回极简 JSON
 # 设计原则：每次调用 Token 消耗极低（< 100 字节响应），绝不读取完整日志
 #
 # 用法:
-#   bash cc_probe.sh <ssh_target> <task_id> [work_dir]
+#   bash kc_probe.sh <ssh_target> <task_id> [work_dir]
 #
 # 输出 JSON 字段:
 #   status       - running | completed | failed | timeout | loop_detected | not_found
@@ -30,7 +30,7 @@ TASK_ID="__TASK_ID__"
 LOG_FILE="__LOG_FILE__"
 EXIT_FILE="__EXIT_FILE__"
 LOCK_FILE="__LOCK_FILE__"
-SESSION_NAME="cc_${TASK_ID}"
+SESSION_NAME="kc_${TASK_ID}"
 
 # 检查日志文件是否存在
 if [ ! -f "$LOG_FILE" ]; then
