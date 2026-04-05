@@ -2,24 +2,31 @@
 # kc_dispatch.sh: 在远程服务器上以 tmux 守护方式异步启动 Kimi Code 任务
 #
 # 用法:
-#   bash kc_dispatch.sh <ssh_target> <task_id> <prompt> [work_dir] [yolo]
+#   bash kc_dispatch.sh <ssh_target> <task_id> <prompt_or_file> [work_dir] [yolo]
 #
 # 参数:
-#   ssh_target    - SSH 连接目标, 如 user@host 或 host (依赖 ~/.ssh/config)
-#   task_id       - 唯一任务 ID, 用于 tmux 会话名和日志文件名, 如 task_20260326_001
-#   prompt        - 传递给 Kimi Code 的任务 Prompt (建议用单引号包裹)
-#   work_dir      - (可选) 远程工作目录, 默认 ~/project
-#   yolo          - (可选) 是否自动同意所有操作 (true/false)，默认为 true
+#   ssh_target        - SSH 连接目标, 如 "-p 44365 user@host"
+#   task_id           - 唯一任务 ID, 如 task_20260326_001
+#   prompt_or_file    - 任务 Prompt 内容 或 本地 Prompt 文件路径（以 @/ 或 @~ 开头）
+#                       推荐使用文件方式（@/path/to/prompt.txt）避免 shell 转义问题
+#   work_dir          - (可选) 远程工作目录, 默认 ~/project
+#   yolo              - (可选) 是否自动同意所有操作, 默认 true
 #
 # 输出:
-#   成功时打印 JSON: {"status":"dispatched","task_id":"...","session":"...","log":"..."}
-#   失败时打印 JSON: {"status":"error","message":"..."}
+#   成功: {"status":"dispatched","task_id":"...","session":"...","log":"..."}
+#   锁定: {"status":"locked","task_id":"...","pid":"..."}
+#   错误: {"status":"error","message":"..."}
+#
+# 最佳实践:
+#   1. 给出宏大且明确的目标，包含上下文、预期结果、验收标准
+#   2. 明确告知 Kimi：遇到问题应自主迭代，只有真正无法解决时才在日志中写 [BLOCKED]
+#   3. 下发后设置 15 分钟探针，让 Kimi 有充足时间自行试错和修复
 
 set -euo pipefail
 
 SSH_TARGET="${1:?必须提供 ssh_target}"
 TASK_ID="${2:?必须提供 task_id}"
-PROMPT="${3:?必须提供 prompt}"
+PROMPT_ARG="${3:?必须提供 prompt 内容或文件路径}"
 WORK_DIR="${4:-~/project}"
 YOLO="${5:-true}"
 
@@ -28,11 +35,26 @@ MANUS_DIR="${WORK_DIR}/.manus"
 LOG_FILE="${MANUS_DIR}/logs/${TASK_ID}.log"
 EXIT_FILE="${MANUS_DIR}/logs/${TASK_ID}.exit"
 LOCK_FILE="${MANUS_DIR}/orchestration.lock"
+REMOTE_PROMPT_FILE="${MANUS_DIR}/prompts/${TASK_ID}.txt"
 
-# 构建 yolo 参数
 YOLO_ARG=""
 if [ "$YOLO" = "true" ]; then
   YOLO_ARG="--yolo"
+fi
+
+# 处理 prompt：若以 @ 开头则视为本地文件路径，上传到远程；否则直接写入远程文件
+if [[ "$PROMPT_ARG" == @* ]]; then
+  LOCAL_FILE="${PROMPT_ARG:1}"
+  if [ ! -f "$LOCAL_FILE" ]; then
+    echo "{\"status\":\"error\",\"message\":\"本地 prompt 文件不存在: $LOCAL_FILE\"}"
+    exit 1
+  fi
+  # 先确保远程目录存在，再上传文件
+  ssh $SSH_TARGET "mkdir -p '${MANUS_DIR}/prompts'" 2>/dev/null
+  scp $LOCAL_FILE "$SSH_TARGET:${REMOTE_PROMPT_FILE}" 2>/dev/null
+else
+  # 直接写入远程文件
+  ssh $SSH_TARGET "mkdir -p '${MANUS_DIR}/prompts' && cat > '${REMOTE_PROMPT_FILE}'" <<< "$PROMPT_ARG"
 fi
 
 # 在远程执行的完整命令
@@ -56,18 +78,18 @@ if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
   exit 0
 fi
 
-# 启动 tmux 守护会话，运行 Kimi Code
-# kimi 默认不在 PATH 中，使用绝对路径
+# 启动 tmux 守护会话，通过 stdin 方式传入 prompt（避免 shell 转义问题）
+KIMI_BIN=\$(which kimi 2>/dev/null || echo "/root/.local/share/uv/tools/kimi-cli/bin/kimi")
 tmux new-session -d -s "${SESSION_NAME}" -c "${WORK_DIR}" \
-  "timeout 7200s /root/.local/share/uv/tools/kimi-cli/bin/kimi --print ${YOLO_ARG} --output-format stream-json -p '${PROMPT}' > '${LOG_FILE}' 2>&1; echo \$? > '${EXIT_FILE}'"
+  "timeout 7200s bash -c 'cat \"${REMOTE_PROMPT_FILE}\" | \$KIMI_BIN --print ${YOLO_ARG} --output-format stream-json > \"${LOG_FILE}\" 2>&1'; echo \$? > \"${EXIT_FILE}\""
 
 # 写入锁文件
 TMUX_PID=\$(tmux list-panes -t "${SESSION_NAME}" -F '#{pane_pid}' 2>/dev/null | head -1)
-echo "{\"task_id\":\"${TASK_ID}\",\"session\":\"${SESSION_NAME}\",\"pid\":\"\$TMUX_PID\",\"started_at\":\"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"work_dir\":\"${WORK_DIR}\"}" > "${LOCK_FILE}"
+echo "{\"task_id\":\"${TASK_ID}\",\"session\":\"${SESSION_NAME}\",\"pid\":\"\$TMUX_PID\",\"started_at\":\"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"work_dir\":\"${WORK_DIR}\",\"prompt_file\":\"${REMOTE_PROMPT_FILE}\"}" > "${LOCK_FILE}"
 
-echo '{"status":"dispatched","task_id":"${TASK_ID}","session":"${SESSION_NAME}","log":"${LOG_FILE}"}'
+echo '{"status":"dispatched","task_id":"${TASK_ID}","session":"${SESSION_NAME}","log":"${LOG_FILE}","prompt_file":"${REMOTE_PROMPT_FILE}"}'
 REMOTE
 )
 
-RESULT=$(ssh "$SSH_TARGET" "$REMOTE_CMD" 2>&1)
+RESULT=$(ssh $SSH_TARGET "$REMOTE_CMD" 2>&1)
 echo "$RESULT"
