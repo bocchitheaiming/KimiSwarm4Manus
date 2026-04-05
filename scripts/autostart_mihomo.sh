@@ -2,6 +2,9 @@
 # autostart_mihomo.sh
 # 开机自动启动 mihomo 代理（AutoDL 环境）
 # 用法：将此脚本添加到 ~/.bashrc 末尾，或通过 crontab @reboot 调用
+#
+# 在 ~/.bashrc 中添加以下行：
+#   bash /root/KimiSwarm4Manus/scripts/autostart_mihomo.sh
 
 MIHOMO_DIR="/root/mihomo-for-autodl"
 MIHOMO_BIN="$MIHOMO_DIR/mihomo_main/bin/mihomo"
